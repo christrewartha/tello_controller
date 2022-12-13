@@ -50,9 +50,12 @@ if __name__ == '__main__':
     
     nc.join_network(DRONE_NETWORK)
     sleep(5)
-    run_tello()
     
-    nc.join_network(WIFI_NETWORK)
+    try:
+        run_tello()
+    finally:
+        sleep(5)
+        nc.join_network(WIFI_NETWORK)
     
     
     
