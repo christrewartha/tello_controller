@@ -1,4 +1,4 @@
-# tello_controller
+# Computer control of DJI Ryze Tello Drone
 Control the DJI Tello drone with keyboard - also use the camera for face recognition / tracking
 
 Using this tello package: https://github.com/damiafuentes/DJITelloPy
