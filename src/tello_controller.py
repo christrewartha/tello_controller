@@ -1,10 +1,8 @@
-import network_configurator as nc
-import tello_tools as tt
 from time import sleep
 import sys
 
 def run_tello():
-    
+    import tello_tools as tt
     # open connection to tello drone
     drone = tt.initialise_drone()
     
@@ -43,19 +41,17 @@ def run_tello():
 
 
 if __name__ == '__main__':
+    import secret_config
+    import network_configurator as nc
     
-    # these are existing networks - no auth functionality
-    DRONE_NETWORK = 'TELLO-5904FC'
-    WIFI_NETWORK = 'BT- Jo'
-    
-    nc.join_network(DRONE_NETWORK)
-    sleep(5)
+    nc.join_network(secret_config.DRONE_NETWORK)
+    sleep(2)
     
     try:
         run_tello()
     finally:
-        sleep(5)
-        nc.join_network(WIFI_NETWORK)
+        sleep(2)
+        nc.join_network(secret_config.WIFI_NETWORK)
     
     
     

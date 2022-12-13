@@ -173,7 +173,7 @@ def find_face(img):
         return img, [[0,0],0]
     
     
-def trackFace(drone, info, width, previous_error)
+def trackFace(drone, info, width, previous_error):
     fbRange = [6200, 6800]
     pid = [0.4, 0.4, 0]
     fb = 0
