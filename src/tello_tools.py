@@ -126,7 +126,7 @@ def drone_update_stream(drone, detect_face=False, track_face=False):
     
     global take_snapshot
     if take_snapshot:
-        cv2.imwrite(f'Resources/Images/{time.time()}.jpg', frame)
+        cv2.imwrite(f'../Resources/Images/{time.time()}.jpg', frame)
         take_snapshot = False
     
     if detect_face:
@@ -148,7 +148,7 @@ def drone_update_stream(drone, detect_face=False, track_face=False):
         
     
 def find_face(img):
-    xml_file = '../haar-cascade-files-master/haarcascade_frontalface_default.xml'
+    xml_file = '../../haar-cascade-files-master/haarcascade_frontalface_default.xml'
     face_cascade = cv2.CascadeClassifier(xml_file)
     
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
