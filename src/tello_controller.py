@@ -41,17 +41,20 @@ def run_tello():
 
 
 if __name__ == '__main__':
-    import secret_config
+    sys.path.insert(0, '../../secret_config')
+    from tello_secret import DRONE_NETWORK
+    from tello_secret import WIFI_NETWORK
+    
     import network_configurator as nc
     
-    nc.join_network(secret_config.DRONE_NETWORK)
+    nc.join_network(DRONE_NETWORK)
     sleep(2)
     
     try:
         run_tello()
     finally:
         sleep(2)
-        nc.join_network(secret_config.WIFI_NETWORK)
+        nc.join_network(WIFI_NETWORK)
     
     
     
