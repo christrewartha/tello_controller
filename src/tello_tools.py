@@ -17,6 +17,7 @@ take_snapshot = False
 lr, fb, ud, yv = 0, 0, 0, 0
 previous_error = 0
 
+
 def initialise_drone():
     
     drone = tello.Tello()
@@ -137,8 +138,7 @@ def drone_update_stream(drone, detect_face=False, track_face=False):
             if track_face:
                 global previous_error
                 previous_error = trackFace(drone, info, 1280, previous_error)
-        
-    
+
     # convert format to blit to pygame surface
     frame = cv2.resize(frame, PYGAME_WINDOW_DIMENSONS)
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -158,12 +158,12 @@ def find_face(img):
     faces_centres = []
     faces_areas = []
     
-    for (x,y,w,h) in faces:
-        cv2.rectangle(img,(x,y),(x+w, y+h), (0,0,255),2)
+    for (x, y, w, h) in faces:
+        cv2.rectangle(img, (x, y), (x+w, y+h), (0, 0, 255), 2)
         cx = x + w // 2
         cy = y + h // 2
         area = w * h
-        cv2.circle(img, (cx,cy), 5, (0,0,255), cv2.FILLED)
+        cv2.circle(img, (cx, cy), 5, (0, 0, 255), cv2.FILLED)
         faces_centres.append([cx, cy])
         faces_areas.append(area)
         
@@ -171,11 +171,11 @@ def find_face(img):
         i = faces_areas.index(max(faces_areas))
         return img, [faces_centres[i], faces_areas[i]]
     else:
-        return img, [[0,0],0]
+        return img, [[0, 0], 0]
     
     
 def trackFace(drone, info, width, previous_error):
-    fbRange = [6200, 6800]
+    fb_range = [6200, 6800]
     pid = [0.4, 0.4, 0]
     fb = 0
     
@@ -186,14 +186,14 @@ def trackFace(drone, info, width, previous_error):
     speed = pid[0] * error + pid[1] * (error-previous_error)
     speed = int(np.clip(speed, -100, 100))
     
-    if area > fbRange[0] and area < fbRange[1]:
+    if fb_range[0] < area < fb_range[1]:
         fb = 0
-    elif area > fbRange[1]:
+    elif area > fb_range[1]:
         fb = -20
-    elif area < fbRange[0] and area != 0:
+    elif area < fb_range[0] and area != 0:
         fb = 20
         
-    #send these values to the drone
+    # send these values to the drone
         
     return error
     

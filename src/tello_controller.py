@@ -1,6 +1,7 @@
 from time import sleep
 import sys
 
+
 def run_tello():
     import tello_tools as tt
     # open connection to tello drone
@@ -19,11 +20,9 @@ def run_tello():
         tt.drone_update_stream(drone)
         
         # update keyboard - movement based on this
-        if tt.drone_wasd_controls(drone) == False:
+        if not tt.drone_wasd_controls(drone):
             pass
-        
-        
-        
+
         # detect faces
         # move based on the faces
         
@@ -31,10 +30,8 @@ def run_tello():
         
         # detect surroundings
         # avoid surroundings
-        
 
         # end main loop
-        
 
     # close pygame
     tt.quit_pygame()

@@ -2,6 +2,7 @@ import platform
 import subprocess
 
 
+
 def display_available_networks():
     if platform.system() == "Windows":
         command = "netsh wlan show networks interface=WiFi"
@@ -22,9 +23,3 @@ def join_network(network):
         p.wait()
     else:
         raise Exception('Unsupported platform')
-
-
-
-    
-    
-    
