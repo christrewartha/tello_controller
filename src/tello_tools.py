@@ -1,5 +1,6 @@
 from djitellopy import tello
 import pygame
+import numpy as np
 import cv2
 import logging
 import time
@@ -11,7 +12,7 @@ DRONE_SPEED_INCREASE = 10
 DRONE_SPEED_FALLOFF = 5
 PYGAME_WINDOW_DIMENSONS = (800,600)
 
-pygame_window = 0
+pygame_window = None
 take_snapshot = False
 lr, fb, ud, yv = 0, 0, 0, 0
 previous_error = 0
@@ -130,7 +131,7 @@ def drone_update_stream(drone, detect_face=False, track_face=False):
         take_snapshot = False
     
     if detect_face:
-        img, info = find_face(frame)
+        _, info = find_face(frame)
         if info[1] != 0:
             #found a face
             if track_face:

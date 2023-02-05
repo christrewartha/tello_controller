@@ -1,7 +1,6 @@
-import os
 import platform
 import subprocess
-from time import sleep
+
 
 def display_available_networks():
     if platform.system() == "Windows":
