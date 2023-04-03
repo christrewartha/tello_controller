@@ -41,7 +41,7 @@ if __name__ == '__main__':
     sys.path.insert(0, '../../secret_config')
     from tello_secret import DRONE_NETWORK
     from tello_secret import WIFI_NETWORK
-    
+
     import network_configurator as nc
     
     nc.join_network(DRONE_NETWORK)
@@ -52,7 +52,7 @@ if __name__ == '__main__':
     finally:
         sleep(2)
         nc.join_network(WIFI_NETWORK)
-    
+
     
     
     
