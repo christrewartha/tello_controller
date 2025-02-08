@@ -38,7 +38,7 @@ def drone_update_stream(drone, detect_face=False, track_face=False):
 
 
 def find_face(img):
-    xml_file = '../../haar-cascade-files-master/haarcascade_frontalface_default.xml'
+    xml_file = 'data/haarcascades/haarcascade_frontalface_default.xml'
     face_cascade = cv2.CascadeClassifier(xml_file)
 
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
