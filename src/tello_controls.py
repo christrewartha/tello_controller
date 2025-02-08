@@ -14,9 +14,10 @@ DRONE_SPEED_FALLOFF = 5
 lr, fb, ud, yv = 0, 0, 0, 0
 previous_error = 0
 in_flight = False
+last_qe_time = 0  # Tracks last time 'q' or 'e' was pressed
+qe_delay_duration = 3.0
 
 def initialise_drone():
-
     drone = tello.Tello()
 
     drone.connect()
@@ -51,6 +52,7 @@ def drone_wasd_controls(drone):
     global ud
     global yv
     global in_flight
+    global last_qe_time
 
     qe_pressed = False
     yv_pressed = False
@@ -100,17 +102,22 @@ def drone_wasd_controls(drone):
     if not lr_pressed:
         lr = 0
 
-    if get_key("q") and in_flight:
+    current_time = time.time()  # Get the current time
+    
+    if get_key("q") and in_flight and (current_time - last_qe_time > qe_delay_duration):
         drone.land()
+        in_flight = False
         qe_pressed = True
-        
-    if get_key("e"):
+        last_qe_time = current_time  # Update the last time 'q' was pressed
+
+    if get_key("e") and not in_flight and (current_time - last_qe_time > qe_delay_duration):
         drone.takeoff()
         in_flight = True
         qe_pressed = True
+        last_qe_time = current_time  # Update the last time 'e' was pressed
 
     drone.send_rc_control(lr, fb, ud, yv)
-    
+
     return ud_pressed or fb_pressed or lr_pressed or yv_pressed or qe_pressed
 
 

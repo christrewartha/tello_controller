@@ -1,4 +1,4 @@
-import network_configurator as network_config
+import network_config
 import tello_controls
 import tello_pygame
 import tello_video
@@ -41,6 +41,8 @@ def run_tello():
 # this function returns the name of the current wifi network
 
 if __name__ == '__main__':
+
+    print(network_config.get_current_wifi_network())
 
     network_config.configure_network_for_tello()
 

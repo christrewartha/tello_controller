@@ -7,9 +7,9 @@ previous_network = None
 
 
 # check in a list of strings for the substring "TELLO", return the index if found
-def find_tello_in_list(list_of_strings):
-    for i, string in enumerate(list_of_strings):
-        if "TELLO" in string:
+def find_tello_network(network_list):
+    for i, network in enumerate(network_list):
+        if "TELLO" in network:
             return i
     return -1
 
@@ -27,9 +27,6 @@ def configure_network_for_tello():
         print(f"{i + 1}. {network}")
 
     print(f"0. Exit Application")
-
-    tello_idx = find_tello_in_list(network_list)
-    print(f"TELLO network found at index {tello_idx + 1}")
 
     connection_index = int(input("\nSelect a network to connect to (enter the number): ")) - 1
     if connection_index == -1:
@@ -49,7 +46,8 @@ def configure_network_for_tello():
 
 
 def restore_network_configuration():
-    if previous_network != None:
+    global previous_network
+    if previous_network is not None:
         join_network(previous_network)
         print("Restored previous network configuration.")
     else:
@@ -60,7 +58,7 @@ def get_current_wifi_network():
     out = subprocess.check_output('netsh wlan show interfaces').decode("utf-8")
     current = out.split("\n")[9].split(": ")[1]
     print(f"Current WiFi Network: {current}")
-    return out
+    return current
 
 
 def display_available_networks():
