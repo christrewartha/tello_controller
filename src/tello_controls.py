@@ -20,7 +20,7 @@ def initialise_drone():
     drone = tello.Tello()
 
     drone.connect()
-   
+
     battery = drone.get_battery()
     print(drone.get_battery())
 

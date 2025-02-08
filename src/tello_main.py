@@ -1,25 +1,27 @@
 import network_configurator as network_config
-import tello_controls as controls
+import tello_controls
+import tello_pygame
+import tello_video
 
 def run_tello():
 
     # open connection to tello drone
-    drone = controls.initialise_drone()
+    drone = tello_controls.initialise_drone()
     
     # initialise pygame
-    controls.initialise_pygame()
+    tello_pygame.initialise_pygame()
     # switch focus to pygame window
 
     # main loop
     running = True
     
     while running:
-        running = controls.update_pygame()
+        running = tello_pygame.update_pygame()
         
-        controls.drone_update_stream(drone)
+        tello_video.drone_update_stream(drone)
         
         # update keyboard - movement based on this
-        if not controls.drone_wasd_controls(drone):
+        if not tello_controls.drone_wasd_controls(drone):
             pass
 
         # detect faces
@@ -33,18 +35,18 @@ def run_tello():
         # end main loop
 
     # close pygame
-    controls.quit_pygame()
+    tello_pygame.quit_pygame()
 
 
 # this function returns the name of the current wifi network
 
 if __name__ == '__main__':
 
-    #network_config.configure_network_for_tello()
+    network_config.configure_network_for_tello()
 
     run_tello()
 
-    #network_config.restore_network_configuration()
+    network_config.restore_network_configuration()
 
     
     
