@@ -89,13 +89,14 @@ class TrackingMovement:
 
 class FaceDetector:
     """Handles face detection in video frames"""
-    def __init__(self, config: FaceTrackConfig = FaceTrackConfig()):
-        self.config = config
+    def __init__(self, face_config: FaceTrackConfig = FaceTrackConfig(), 
+                 video_config: VideoConfig = VideoConfig()):
+        self.config = face_config
         try:
-            if not Path(config.cascade_path).exists():
-                raise FileNotFoundError(f"Cascade file not found: {config.cascade_path}")
+            if not Path(video_config.cascade_path).exists():
+                raise FileNotFoundError(f"Cascade file not found: {video_config.cascade_path}")
             
-            self.face_cascade = cv2.CascadeClassifier(str(config.cascade_path))
+            self.face_cascade = cv2.CascadeClassifier(str(video_config.cascade_path))
             if self.face_cascade.empty():
                 raise Exception(f"Failed to load cascade classifier")
         except Exception as e:
@@ -200,7 +201,12 @@ class VideoManager:
         
         try:
             frame = drone.get_frame_read().frame
-            frame = cv2.resize(frame, (self.config.frame_width, self.config.frame_height))
+            
+            # Get pygame window dimensions
+            pygame_dims = tello_pygame.get_dimensions()
+            
+            # Resize frame to match pygame window exactly
+            frame = cv2.resize(frame, pygame_dims)
 
             if self.take_snapshot:
                 saved_path = self.save_snapshot(frame)
@@ -210,14 +216,19 @@ class VideoManager:
                 frame, info = self.face_detector.find_face(frame)
                 if info[1] != 0 and track_face:
                     _, tracking_stats = self.tracking_movement.track_face(
-                        drone, info, self.config.frame_width)
+                        drone, info, pygame_dims[0])  # Use width from pygame dimensions
                     status['tracking_stats'] = tracking_stats
 
             # Convert format for pygame display
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             frame = frame.swapaxes(0, 1)
             frame = cv2.flip(frame, 0)
-            tello_pygame.blit_frame(frame)
+            
+            # Ensure frame matches pygame surface dimensions exactly
+            if frame.shape[:2] == pygame_dims:  # Check dimensions before blitting
+                tello_pygame.blit_frame(frame)
+            else:
+                logging.warning(f"Frame dimensions {frame.shape[:2]} don't match pygame surface {pygame_dims}")
 
             return status
         except Exception as e:

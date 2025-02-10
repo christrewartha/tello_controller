@@ -1,12 +1,12 @@
 import network_config
-import tello_controls
+import tello_keyboard
 import tello_pygame
 import tello_video
 
 def run_tello():
 
     # open connection to tello drone
-    drone = tello_controls.initialise_drone()
+    drone = tello_keyboard.initialise_drone()
     
     # initialise pygame
     tello_pygame.initialise_pygame()
@@ -21,8 +21,9 @@ def run_tello():
         tello_video.drone_update_stream(drone)
         
         # update keyboard - movement based on this
-        if not tello_controls.drone_wasd_controls(drone):
+        if not tello_keyboard.update_controls(drone):
             pass
+
 
         # detect faces
         # move based on the faces

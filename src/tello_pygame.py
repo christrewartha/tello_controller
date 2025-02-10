@@ -30,7 +30,8 @@ def quit_pygame():
 
 
 def get_dimensions():
-    return PYGAME_WINDOW_DIMENSIONS
+    """Return the current pygame window dimensions as (width, height)"""
+    return PYGAME_WINDOW_DIMENSIONS  # These should be your pygame window dimensions
 
 
 def blit_frame(frame):
