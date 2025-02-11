@@ -4,6 +4,8 @@ import logging
 from dataclasses import dataclass
 from typing import Tuple, Dict
 import time
+import numpy as np
+import threading
 
 @dataclass
 class DroneConfig:
@@ -46,6 +48,7 @@ class DroneController:
         self._is_currently_flying = False  # Private variable for the property
         self.last_takeoff_time = 0
         self.logger = logging.getLogger(__name__)
+        self.patrol_mode_active = False  # Flag for patrol mode
 
     @property
     def is_currently_flying(self) -> bool:
@@ -126,6 +129,46 @@ class DroneController:
             return 0
         return 0
 
+    def hover(self, drone: tello.Tello):
+        """Hover in place without rotating."""
+        try:
+            drone.send_rc_control(0, 0, 0, 0)  # Hover in place
+        except Exception as e:
+            self.logger.error(f"Error during hover: {e}")
+
+    def patrol_mode(self, drone: tello.Tello):
+        """Enter patrol mode, rotating and scanning for faces."""
+        self.patrol_mode_active = True
+        self.logger.info("Patrol mode activated.")
+        
+        while self.patrol_mode_active and self.is_currently_flying:
+            # Rotate slowly (adjust yaw)
+            drone.send_rc_control(0, 0, 0, 20)  # Rotate right at a slow speed
+            time.sleep(0.1)  # Adjust the sleep time for rotation speed
+
+            # Check for face detection
+            frame = drone.get_frame_read().frame
+            frame, face_info = self.face_detector.find_face(frame)
+            if face_info[1] != 0:  # If a face is detected
+                self.lock_on_face(drone, face_info)
+
+        self.logger.info("Patrol mode deactivated.")
+
+    def lock_on_face(self, drone: tello.Tello, face_info):
+        """Rotate to face the detected face."""
+        try:
+            x, _ = face_info[0]  # Get the x-coordinate of the face center
+            frame_width = 1280  # Assuming your frame width is 1280
+
+            # Calculate error from center
+            error = x - (frame_width // 2)
+            speed = int(np.clip(error * 0.1, -20, 20))  # Adjust speed based on error
+
+            # Send control command to rotate towards the face
+            drone.send_rc_control(0, 0, 0, speed)  # Adjust yaw based on error
+        except Exception as e:
+            self.logger.error(f"Error locking on to face: {e}")
+
     def update_controls(self, drone: tello.Tello) -> bool:
         """
         Update drone controls based on keyboard input.
@@ -187,7 +230,13 @@ class DroneController:
                 had_input = True
                 self.last_takeoff_time = current_time
             elif self.get_key("e") and not self.is_currently_flying and cooldown_elapsed:
-                drone.takeoff()
+                if not self.safe_takeoff(drone):
+                    self.logger.error("Failed to take off after multiple attempts.")
+                    return False
+
+                # Start hovering after takeoff
+                self.hover(drone)
+
                 self.is_currently_flying = True
                 had_input = True
                 self.last_takeoff_time = current_time
@@ -196,6 +245,16 @@ class DroneController:
             if self.get_key("SPACE"):
                 self.speeds = dict.fromkeys(self.speeds, 0)
                 had_input = True
+
+            # Start patrol mode in a separate thread
+            if self.get_key("f") and self.is_currently_flying and not self.patrol_mode_active:
+                patrol_thread = threading.Thread(target=self.patrol_mode, args=(drone,))
+                patrol_thread.start()
+
+            # Disable patrol mode
+            if self.get_key("g") and self.patrol_mode_active:
+                self.patrol_mode_active = False
+                self.hover(drone)  # Optionally hover after exiting patrol mode
 
             # Send control commands to drone
             drone.send_rc_control(
@@ -211,6 +270,20 @@ class DroneController:
             self.logger.error(f"Error updating controls: {e}", exc_info=True)
             return False
 
+    def safe_takeoff(self, drone: tello.Tello) -> bool:
+        """Safely take off the drone with retries."""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                drone.takeoff()
+                self.logger.info("Drone taking off...")
+                time.sleep(5)  # Wait for a few seconds to stabilize
+                self.is_currently_flying = True
+                return True
+            except Exception as e:
+                self.logger.error(f"Takeoff attempt {attempt + 1} failed: {e}")
+                time.sleep(2)  # Wait before retrying
+        return False
 
 # Create global instance
 drone_controller = DroneController()

@@ -220,7 +220,7 @@ class VideoManager:
                     status['tracking_stats'] = tracking_stats
 
             # Convert format for pygame display
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            #frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             frame = frame.swapaxes(0, 1)
             frame = cv2.flip(frame, 0)
             
