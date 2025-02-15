@@ -38,8 +38,46 @@ class ControlConfig:
         'takeoff': 'e',   # Key to take off
         'land': 'q',      # Key to land
         'patrol': 'f',    # Key to enter patrol mode
-        'stop_patrol': 'g' # Key to stop patrol mode
+        'stop_patrol': 'g', # Key to stop patrol mode
+        'flip_left': 'j', # Key to flip left
+        'flip_right': 'l',
+        'flip_forward': 'i',
+        'flip_back': 'k'
     })
+
+@dataclass
+class AlternativeConfig:
+    """Keyboard control mapping configuration"""
+    movement_controls: Dict[str, Dict[str, str]] = field(default_factory=lambda: {
+        'lr': {'pos': 'd', 'neg': 'a'},      # Left/Right
+        'fb': {'pos': 'w', 'neg': 's'},      # Forward/Back
+        'ud': {'pos': 'UP', 'neg': 'DOWN'},  # Up/Down
+        'yv': {'pos': 'RIGHT', 'neg': 'LEFT'} # Yaw
+    })
+    speed_controls: Dict[str, float] = field(default_factory=lambda: {
+        'LSHIFT': 1.0,    # 100% speed
+        'LCTRL': 0.5,     # 50% speed
+        'default': 0.75   # 75% speed
+    })
+    state_controls: Dict[str, str] = field(default_factory=lambda: {
+        'takeoff': 'e',   # Key to take off
+        'land': 'q',      # Key to land
+        'patrol': 'f',    # Key to enter patrol mode
+        'stop_patrol': 'g', # Key to stop patrol mode
+        'flip_left': 'j', # Key to flip left
+        'flip_right': 'l',
+        'flip_forward': 'i',
+        'flip_back': 'k'
+    })
+
+
+class Command:
+    """Represents a single command for the drone."""
+    def __init__(self, action: str, params: dict, duration: float):
+        self.action = action
+        self.params = params
+        self.duration = duration
+
 
 class DroneController:
     """Handles keyboard-based drone control"""
@@ -53,7 +91,11 @@ class DroneController:
         self.logger = logging.getLogger(__name__)
         self.patrol_mode_active = False  # Flag for patrol mode
         self.patrol_tracking_active = False
-
+        self.frames_since_last_detection = 0  # Counter for frames since last face detection
+        self.max_frames_without_detection = 10  # Number of frames to continue tracking
+        self.patrol_commands = []
+        self.current_command_index = 0
+        self.current_command_start_time = 0
     @property
     def is_currently_flying(self) -> bool:
         """
@@ -157,7 +199,7 @@ class DroneController:
             self.logger.info("Face detected.")
             self.lock_on_face(drone, face_info)
 
-        #self.logger.info("Patrol mode deactivated.")
+        self.logger.info("Patrol mode deactivated.")
 
     def track(self, drone: tello.Tello):
         """Rotate to face the detected face."""
@@ -166,6 +208,8 @@ class DroneController:
             frame = drone.get_frame_read().frame
             frame, face_info = tello_video.detect_face(frame)
             if face_info[1] != 0:  # If a face is detected
+                last_face_info = face_info  # Update last known face info
+                self.frames_since_last_detection = 0
                 x, _ = face_info[0]  # Get the x-coordinate of the face center
                 frame_width = 1280  # Assuming your frame width is 1280
 
@@ -174,12 +218,27 @@ class DroneController:
                 speed = int(np.clip(error * 0.1, 
                                     -self.config.patrol_tracking_speed, 
                                     self.config.patrol_tracking_speed))  # Adjust speed based on err   or
-
                 # Send control command to rotate towards the face
                 drone.send_rc_control(0, 0, 0, speed)  # Adjust yaw based on error
             else:
-                self.logger.info("No face detected.")   
-                self.patrol_tracking_active = False
+                self.frames_since_last_detection += 1
+                if self.frames_since_last_detection <= self.max_frames_without_detection and last_face_info is not None:
+                    x, _ = face_info[0]  # Get the x-coordinate of the face center
+                    frame_width = 1280  # Assuming your frame width is 1280
+
+                    # Calculate error from center
+                    error = x - (frame_width // 2)
+                    speed = int(np.clip(error * 0.1, 
+                                    -self.config.patrol_tracking_speed, 
+                                    self.config.patrol_tracking_speed))  # Adjust speed based on err   or
+
+                    # Send control command to rotate towards the face
+                    drone.send_rc_control(0, 0, 0, speed)  # Adjust yaw based on error
+                else:
+                    self.logger.info("No face detected.")   
+                    self.patrol_tracking_active = False
+                    drone.send_rc_control(0, 0, 0, 0)
+            
         except Exception as e:
             self.logger.error(f"Error locking on to face: {e}")
 
@@ -236,6 +295,16 @@ class DroneController:
                 self.patrol_mode_active = False
                 #self.hover(drone)  # Optionally hover after exiting patrol mode
 
+            # Check for flip
+            if self.get_key(self.controls.state_controls['flip_left']) and self.is_currently_flying:
+                drone.flip_left()
+            elif self.get_key(self.controls.state_controls['flip_right']) and self.is_currently_flying:
+                drone.flip_right()
+            elif self.get_key(self.controls.state_controls['flip_forward']) and self.is_currently_flying:
+                drone.flip_forward()
+            elif self.get_key(self.controls.state_controls['flip_back']) and self.is_currently_flying:
+                drone.flip_back()
+
             # Process movement controls
             for direction, keys in self.controls.movement_controls.items():
                 if self.get_key(keys['pos']):
@@ -291,6 +360,39 @@ class DroneController:
                 self.logger.error(f"Takeoff attempt {attempt + 1} failed: {e}")
                 time.sleep(2)  # Wait before retrying
         return False
+
+    def add_command(self, action: str, params: dict, duration: float):
+        """Add a command to the script."""
+        command = Command(action, params, duration)
+        self.script_commands.append(command)
+
+    def start_patrol_script(self):
+        """Start the sequence of commands."""
+        self.current_command_index = 0
+        self.current_command_start_time = time.time()
+
+    def execute_patrol_script(self, drone: tello.Tello):
+        #check if the current command has timed out
+        current_time = time.time()
+        if current_time - self.current_command_start_time > self.script_commands[self.current_command_index].duration:
+            self.current_command_start_time = current_time
+            self.current_command_index += 1
+            if self.current_command_index >= len(self.script_commands):
+                self.current_command_index = 0
+
+        #execute the current command
+        command = self.script_commands[self.current_command_index]
+        
+        if command.action == "fb":
+            drone.send_rc_control(0, command.params['speed'], 0, 0)
+        elif command.action == "lr":
+            drone.send_rc_control(command.params['speed'], 0, 0, 0)
+        elif command.action == "ud":
+            drone.send_rc_control(0, 0, command.params['speed'], 0)
+        elif command.action == "yv":
+            drone.send_rc_control(0, 0, 0, command.params['speed'])
+
+
 
 # Create global instance
 drone_controller = DroneController()
