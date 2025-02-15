@@ -8,6 +8,10 @@ def run_tello():
     # open connection to tello drone
     drone = tello_keyboard.initialise_drone()
     
+    # initialise videomanager
+    video_manager = tello_video.VideoManager
+
+
     # initialise pygame
     tello_pygame.initialise_pygame()
     # switch focus to pygame window

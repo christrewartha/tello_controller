@@ -1,11 +1,12 @@
 from djitellopy import tello
 import pygame
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Tuple, Dict
 import time
 import numpy as np
 import threading
+import tello_video
 
 @dataclass
 class DroneConfig:
@@ -16,27 +17,29 @@ class DroneConfig:
     speed_increase: int = 10
     speed_falloff: int = 5
     takeoff_cooldown: float = 3.0  # Seconds between takeoff/land commands
+    patrol_rotation_speed: int = 25
+    patrol_tracking_speed: int = 25
 
 @dataclass
 class ControlConfig:
     """Keyboard control mapping configuration"""
-    movement_controls: Dict[str, Dict[str, str]] = None
-    speed_controls: Dict[str, float] = None
-
-    def __post_init__(self):
-        if self.movement_controls is None:
-            self.movement_controls = {
-                'lr': {'pos': 'd', 'neg': 'a'},      # Left/Right
-                'fb': {'pos': 'w', 'neg': 's'},      # Forward/Back
-                'ud': {'pos': 'UP', 'neg': 'DOWN'},  # Up/Down
-                'yv': {'pos': 'RIGHT', 'neg': 'LEFT'}# Yaw
-            }
-        if self.speed_controls is None:
-            self.speed_controls = {
-                'LSHIFT': 1.0,    # 100% speed
-                'LCTRL': 0.5,     # 50% speed
-                'default': 0.75   # 75% speed
-            }
+    movement_controls: Dict[str, Dict[str, str]] = field(default_factory=lambda: {
+        'lr': {'pos': 'd', 'neg': 'a'},      # Left/Right
+        'fb': {'pos': 'w', 'neg': 's'},      # Forward/Back
+        'ud': {'pos': 'UP', 'neg': 'DOWN'},  # Up/Down
+        'yv': {'pos': 'RIGHT', 'neg': 'LEFT'} # Yaw
+    })
+    speed_controls: Dict[str, float] = field(default_factory=lambda: {
+        'LSHIFT': 1.0,    # 100% speed
+        'LCTRL': 0.5,     # 50% speed
+        'default': 0.75   # 75% speed
+    })
+    state_controls: Dict[str, str] = field(default_factory=lambda: {
+        'takeoff': 'e',   # Key to take off
+        'land': 'q',      # Key to land
+        'patrol': 'f',    # Key to enter patrol mode
+        'stop_patrol': 'g' # Key to stop patrol mode
+    })
 
 class DroneController:
     """Handles keyboard-based drone control"""
@@ -144,30 +147,33 @@ class DroneController:
         
     def patrol(self, drone: tello.Tello):
         # Rotate slowly (adjust yaw)
-        drone.send_rc_control(0, 0, 0, 20)  # Rotate right at a slow speed
-        #time.sleep(0.1)  # Adjust the sleep time for rotation speed
+        drone.send_rc_control(0, 0, 0, self.config.patrol_rotation_speed)  # Rotate right at a slow speed
 
         # Check for face detection
+        
         frame = drone.get_frame_read().frame
-        frame, face_info = self.face_detector.find_face(frame)
+        frame, face_info = tello_video.detect_face(frame)
         if face_info[1] != 0:  # If a face is detected
+            self.logger.info("Face detected.")
             self.lock_on_face(drone, face_info)
 
-        self.logger.info("Patrol mode deactivated.")
+        #self.logger.info("Patrol mode deactivated.")
 
     def track(self, drone: tello.Tello):
         """Rotate to face the detected face."""
         try:
              # Check for face detection
             frame = drone.get_frame_read().frame
-            frame, face_info = self.face_detector.find_face(frame)
+            frame, face_info = tello_video.detect_face(frame)
             if face_info[1] != 0:  # If a face is detected
                 x, _ = face_info[0]  # Get the x-coordinate of the face center
                 frame_width = 1280  # Assuming your frame width is 1280
 
                 # Calculate error from center
                 error = x - (frame_width // 2)
-                speed = int(np.clip(error * 0.1, -20, 20))  # Adjust speed based on error
+                speed = int(np.clip(error * 0.1, 
+                                    -self.config.patrol_tracking_speed, 
+                                    self.config.patrol_tracking_speed))  # Adjust speed based on err   or
 
                 # Send control command to rotate towards the face
                 drone.send_rc_control(0, 0, 0, speed)  # Adjust yaw based on error
@@ -212,7 +218,23 @@ class DroneController:
                 self.logger.error(f"Error checking flight status: {e}")
                 return False
 
-            had_input = False
+            # Check for takeoff
+            if self.get_key(self.controls.state_controls['takeoff']) and not self.is_currently_flying:
+                if not self.safe_takeoff(drone):
+                    self.logger.error("Failed to take off after multiple attempts.")
+                    return False
+
+                # Start hovering after takeoff
+                self.hover(drone)
+
+            # Check for patrol mode activation
+            if self.get_key(self.controls.state_controls['patrol']) and self.is_currently_flying and not self.patrol_mode_active:
+                self.patrol_mode_active = True
+
+            # Check for patrol mode deactivation
+            if self.get_key(self.controls.state_controls['stop_patrol']) and self.patrol_mode_active:
+                self.patrol_mode_active = False
+                #self.hover(drone)  # Optionally hover after exiting patrol mode
 
             # Process movement controls
             for direction, keys in self.controls.movement_controls.items():
@@ -221,56 +243,19 @@ class DroneController:
                         self.speeds[direction] + self.config.speed_increase, 
                         self.get_target_speed()
                     )
-                    had_input = True
                 elif self.get_key(keys['neg']):
                     self.speeds[direction] = max(
                         self.speeds[direction] - self.config.speed_increase, 
                         -self.get_target_speed()
                     )
-                    had_input = True
                 else:
                     self.speeds[direction] = self.apply_countersteer(
                         self.speeds[direction], direction
                     )
 
-            # Handle takeoff/landing
-            current_time = time.time()
-            cooldown_elapsed = (current_time - self.last_takeoff_time 
-                              > self.config.takeoff_cooldown)
-
-            if self.get_key("q") and self.is_currently_flying and cooldown_elapsed:
-                drone.land()
-                self.is_currently_flying = False
-                had_input = True
-                self.last_takeoff_time = current_time
-            elif self.get_key("e") and not self.is_currently_flying and cooldown_elapsed:
-                if not self.safe_takeoff(drone):
-                    self.logger.error("Failed to take off after multiple attempts.")
-                    return False
-
-                # Start hovering after takeoff
-                self.hover(drone)
-
-                self.is_currently_flying = True
-                had_input = True
-                self.last_takeoff_time = current_time
-
             # Emergency stop
             if self.get_key("SPACE"):
                 self.speeds = dict.fromkeys(self.speeds, 0)
-                had_input = True
-
-            # Start patrol mode in a separate thread
-            if self.get_key("f") and self.is_currently_flying and not self.patrol_mode_active:
-                self.logger.info("Patrol mode activated.")
-                self._patrol_mode_active = True
-                self.patrol_tracking_active = False
-
-            # Disable patrol mode
-            if self.get_key("g") and self._patrol_mode_active:
-                self._patrol_mode_active = False
-                self.patrol_tracking_active = False
-                self.logger.info("Patrol mode deactivated.")
 
             # Start tracking mode
             if self.patrol_tracking_active:
@@ -286,7 +271,7 @@ class DroneController:
                 self.speeds['yv']
             )
 
-            return had_input
+            return True  # Indicate that controls were updated
 
         except Exception as e:
             self.logger.error(f"Error updating controls: {e}", exc_info=True)

@@ -191,7 +191,7 @@ class VideoManager:
         finally:
             self.take_snapshot = False
 
-    def update_stream(self, drone, detect_face=False, track_face=False) -> dict:
+    def update_stream(self, drone) -> dict:
         """
         Update video stream and process frame based on settings.
         
@@ -213,13 +213,6 @@ class VideoManager:
                 saved_path = self.save_snapshot(frame)
                 status['snapshot_saved'] = saved_path
 
-            if detect_face:
-                frame, info = self.face_detector.find_face(frame)
-                if info[1] != 0 and track_face:
-                    _, tracking_stats = self.tracking_movement.track_face(
-                        drone, info, pygame_dims[0])  # Use width from pygame dimensions
-                    status['tracking_stats'] = tracking_stats
-
             # Convert format for pygame display
             #frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             frame = frame.swapaxes(0, 1)
@@ -235,9 +228,15 @@ class VideoManager:
         except Exception as e:
             logging.error(f"Stream update failed: {e}")
             return status
+        
+    def detect_face(self, frame) -> Tuple[np.ndarray, List]:
+        frame, info = self.face_detector.find_face(frame)
+        return frame, info
+
 
 
 # Create global instance
 video_manager = VideoManager()
 take_a_snapshot = video_manager.take_a_snapshot
 drone_update_stream = video_manager.update_stream
+detect_face = video_manager.detect_face
