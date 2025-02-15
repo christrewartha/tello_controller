@@ -21,7 +21,7 @@ class FaceTrackConfig:
 @dataclass
 class VideoConfig:
     cascade_path: Path = Path('data/haarcascades/haarcascade_frontalface_default.xml')
-    snapshot_dir: Path = Path('../Resources/Images')
+    snapshot_dir: Path = Path('./Snapshots/Images')
     frame_width: int = 1280
     frame_height: int = 720
     fps_limit: int = 30
@@ -181,6 +181,7 @@ class VideoManager:
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             existing_files = len(list(self.config.snapshot_dir.glob(f"{timestamp}_*.jpg")))
             filename = self.config.snapshot_dir / f"{timestamp}_{existing_files + 1}.jpg"
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             cv2.imwrite(str(filename), frame)
             logging.info(f"Snapshot saved: {filename}")
             return filename

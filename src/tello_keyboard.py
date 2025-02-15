@@ -49,6 +49,7 @@ class DroneController:
         self.last_takeoff_time = 0
         self.logger = logging.getLogger(__name__)
         self.patrol_mode_active = False  # Flag for patrol mode
+        self.patrol_tracking_active = False
 
     @property
     def is_currently_flying(self) -> bool:
@@ -141,33 +142,46 @@ class DroneController:
         self.patrol_mode_active = True
         self.logger.info("Patrol mode activated.")
         
-        while self.patrol_mode_active and self.is_currently_flying:
-            # Rotate slowly (adjust yaw)
-            drone.send_rc_control(0, 0, 0, 20)  # Rotate right at a slow speed
-            time.sleep(0.1)  # Adjust the sleep time for rotation speed
+    def patrol(self, drone: tello.Tello):
+        # Rotate slowly (adjust yaw)
+        drone.send_rc_control(0, 0, 0, 20)  # Rotate right at a slow speed
+        #time.sleep(0.1)  # Adjust the sleep time for rotation speed
 
-            # Check for face detection
-            frame = drone.get_frame_read().frame
-            frame, face_info = self.face_detector.find_face(frame)
-            if face_info[1] != 0:  # If a face is detected
-                self.lock_on_face(drone, face_info)
+        # Check for face detection
+        frame = drone.get_frame_read().frame
+        frame, face_info = self.face_detector.find_face(frame)
+        if face_info[1] != 0:  # If a face is detected
+            self.lock_on_face(drone, face_info)
 
         self.logger.info("Patrol mode deactivated.")
 
-    def lock_on_face(self, drone: tello.Tello, face_info):
+    def track(self, drone: tello.Tello):
         """Rotate to face the detected face."""
         try:
-            x, _ = face_info[0]  # Get the x-coordinate of the face center
-            frame_width = 1280  # Assuming your frame width is 1280
+             # Check for face detection
+            frame = drone.get_frame_read().frame
+            frame, face_info = self.face_detector.find_face(frame)
+            if face_info[1] != 0:  # If a face is detected
+                x, _ = face_info[0]  # Get the x-coordinate of the face center
+                frame_width = 1280  # Assuming your frame width is 1280
 
-            # Calculate error from center
-            error = x - (frame_width // 2)
-            speed = int(np.clip(error * 0.1, -20, 20))  # Adjust speed based on error
+                # Calculate error from center
+                error = x - (frame_width // 2)
+                speed = int(np.clip(error * 0.1, -20, 20))  # Adjust speed based on error
 
-            # Send control command to rotate towards the face
-            drone.send_rc_control(0, 0, 0, speed)  # Adjust yaw based on error
+                # Send control command to rotate towards the face
+                drone.send_rc_control(0, 0, 0, speed)  # Adjust yaw based on error
+            else:
+                self.logger.info("No face detected.")   
+                self.patrol_tracking_active = False
         except Exception as e:
             self.logger.error(f"Error locking on to face: {e}")
+
+
+    def lock_on_face(self, drone: tello.Tello, face_info):
+        """Enter patrol mode, rotating and scanning for faces."""
+        self.patrol_tracking_active = True
+        self.logger.info("Tracking mode activated.")
 
     def update_controls(self, drone: tello.Tello) -> bool:
         """
@@ -248,13 +262,21 @@ class DroneController:
 
             # Start patrol mode in a separate thread
             if self.get_key("f") and self.is_currently_flying and not self.patrol_mode_active:
-                patrol_thread = threading.Thread(target=self.patrol_mode, args=(drone,))
-                patrol_thread.start()
+                self.logger.info("Patrol mode activated.")
+                self._patrol_mode_active = True
+                self.patrol_tracking_active = False
 
             # Disable patrol mode
-            if self.get_key("g") and self.patrol_mode_active:
-                self.patrol_mode_active = False
-                self.hover(drone)  # Optionally hover after exiting patrol mode
+            if self.get_key("g") and self._patrol_mode_active:
+                self._patrol_mode_active = False
+                self.patrol_tracking_active = False
+                self.logger.info("Patrol mode deactivated.")
+
+            # Start tracking mode
+            if self.patrol_tracking_active:
+                self.track(drone)
+            elif self.patrol_mode_active:
+                self.patrol(drone)
 
             # Send control commands to drone
             drone.send_rc_control(
