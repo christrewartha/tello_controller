@@ -78,6 +78,11 @@ class Command:
         self.params = params
         self.duration = duration
 
+# patrol script
+patrol_script = [
+    Command("fb", {"speed": 50}, 1),
+    Command("fb", {"speed": -50}, 1),
+]
 
 class DroneController:
     """Handles keyboard-based drone control"""
@@ -96,6 +101,9 @@ class DroneController:
         self.patrol_commands = []
         self.current_command_index = 0
         self.current_command_start_time = 0
+        for command in patrol_script:
+            self.add_command(command.action, command.params, command.duration)
+
     @property
     def is_currently_flying(self) -> bool:
         """
@@ -330,7 +338,8 @@ class DroneController:
             if self.patrol_tracking_active:
                 self.track(drone)
             elif self.patrol_mode_active:
-                self.patrol(drone)
+                self.execute_patrol_script(drone)
+                #self.patrol(drone)
 
             # Send control commands to drone
             drone.send_rc_control(
@@ -364,7 +373,7 @@ class DroneController:
     def add_command(self, action: str, params: dict, duration: float):
         """Add a command to the script."""
         command = Command(action, params, duration)
-        self.script_commands.append(command)
+        self.patrol_commands.append(command)
 
     def start_patrol_script(self):
         """Start the sequence of commands."""
@@ -374,14 +383,14 @@ class DroneController:
     def execute_patrol_script(self, drone: tello.Tello):
         #check if the current command has timed out
         current_time = time.time()
-        if current_time - self.current_command_start_time > self.script_commands[self.current_command_index].duration:
+        if current_time - self.current_command_start_time > self.patrol_commands[self.current_command_index].duration:
             self.current_command_start_time = current_time
             self.current_command_index += 1
-            if self.current_command_index >= len(self.script_commands):
+            if self.current_command_index >= len(self.patrol_commands):
                 self.current_command_index = 0
 
         #execute the current command
-        command = self.script_commands[self.current_command_index]
+        command = self.patrol_commands[self.current_command_index]
         
         if command.action == "fb":
             drone.send_rc_control(0, command.params['speed'], 0, 0)
