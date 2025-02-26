@@ -22,7 +22,7 @@ def run_tello():
     while running:
         running = tello_pygame.update_pygame()
         
-        tello_video.drone_update_stream(drone)
+        tello_video.drone_update_stream(drone)  
         
         # update keyboard - movement based on this
         if not tello_keyboard.update_controls(drone):

@@ -12,13 +12,15 @@ import tello_video
 class DroneConfig:
     """Configuration settings for drone control"""
     min_battery_level: int = 10
-    speed_max: int = 250
+    speed_max: int = 100
     countersteer: int = 20
-    speed_increase: int = 10
+    speed_increase: int = 10  # Maximum speed increase per key press
     speed_falloff: int = 5
     takeoff_cooldown: float = 3.0  # Seconds between takeoff/land commands
     patrol_rotation_speed: int = 25
     patrol_tracking_speed: int = 25
+    max_speed: int = 100  # Maximum speed for movement
+    acceleration_rate: int = 3  # Speed increase per update
 
 @dataclass
 class ControlConfig:
@@ -31,8 +33,8 @@ class ControlConfig:
     })
     speed_controls: Dict[str, float] = field(default_factory=lambda: {
         'LSHIFT': 1.0,    # 100% speed
-        'LCTRL': 0.5,     # 50% speed
-        'default': 0.75   # 75% speed
+        'LCTRL': 1.0,     # 50% speed
+        'default': 1.0   # 75% speed
     })
     state_controls: Dict[str, str] = field(default_factory=lambda: {
         'takeoff': 'e',   # Key to take off
@@ -56,8 +58,8 @@ class AlternativeConfig:
     })
     speed_controls: Dict[str, float] = field(default_factory=lambda: {
         'LSHIFT': 1.0,    # 100% speed
-        'LCTRL': 0.5,     # 50% speed
-        'default': 0.75   # 75% speed
+        'LCTRL': 1.0,     # 50% speed
+        'default': 1.0   # 75% speed
     })
     state_controls: Dict[str, str] = field(default_factory=lambda: {
         'takeoff': 'e',   # Key to take off
@@ -91,6 +93,7 @@ class DroneController:
         self.config = drone_config
         self.controls = control_config
         self.speeds = {'lr': 0, 'fb': 0, 'ud': 0, 'yv': 0}
+        self.current_speeds = {'lr': 0, 'fb': 0, 'ud': 0, 'yv': 0}  # Track current speeds
         self._is_currently_flying = False  # Private variable for the property
         self.last_takeoff_time = 0
         self.logger = logging.getLogger(__name__)
@@ -209,47 +212,45 @@ class DroneController:
 
         self.logger.info("Patrol mode deactivated.")
 
+    def process_face_tracking(self, drone: tello.Tello, face_info):
+        """Process face tracking logic while maintaining a set distance."""
+        x, y, width, height = face_info[0]  # Get the coordinates and size of the face
+        frame_width = 1280  # Assuming your frame width is 1280
+        frame_height = 720  # Assuming your frame height is 720
+
+        # Calculate error from center
+        error_x = x - (frame_width // 2)
+        speed_x = int(np.clip(error_x * 0.1, -20, 20))  # Adjust yaw based on x error
+
+        # Set desired distance and calculate current distance based on face size
+        desired_distance = 100  # Set your desired distance in cm
+        current_distance = (desired_distance * frame_height) / height  # Estimate distance based on face height
+        distance_error = current_distance - desired_distance
+        speed_y = int(np.clip(distance_error * 0.1, -20, 20))  # Adjust altitude based on distance error
+
+        # Send control commands to rotate towards the face and maintain altitude
+        drone.send_rc_control(0, speed_y, 0, speed_x)  # Adjust up/down and yaw based on errors
+
     def track(self, drone: tello.Tello):
         """Rotate to face the detected face."""
         try:
-             # Check for face detection
+            # Check for face detection
             frame = drone.get_frame_read().frame
-            frame, face_info = tello_video.detect_face(frame)
+            frame, face_info = self.face_detector.find_face(frame)
             if face_info[1] != 0:  # If a face is detected
-                last_face_info = face_info  # Update last known face info
+                last_face_info = face_info
                 self.frames_since_last_detection = 0
-                x, _ = face_info[0]  # Get the x-coordinate of the face center
-                frame_width = 1280  # Assuming your frame width is 1280
-
-                # Calculate error from center
-                error = x - (frame_width // 2)
-                speed = int(np.clip(error * 0.1, 
-                                    -self.config.patrol_tracking_speed, 
-                                    self.config.patrol_tracking_speed))  # Adjust speed based on err   or
-                # Send control command to rotate towards the face
-                drone.send_rc_control(0, 0, 0, speed)  # Adjust yaw based on error
+                self.process_face_tracking(drone, face_info)  # Call the new method
             else:
                 self.frames_since_last_detection += 1
                 if self.frames_since_last_detection <= self.max_frames_without_detection and last_face_info is not None:
-                    x, _ = face_info[0]  # Get the x-coordinate of the face center
-                    frame_width = 1280  # Assuming your frame width is 1280
-
-                    # Calculate error from center
-                    error = x - (frame_width // 2)
-                    speed = int(np.clip(error * 0.1, 
-                                    -self.config.patrol_tracking_speed, 
-                                    self.config.patrol_tracking_speed))  # Adjust speed based on err   or
-
-                    # Send control command to rotate towards the face
-                    drone.send_rc_control(0, 0, 0, speed)  # Adjust yaw based on error
+                    self.process_face_tracking(drone, last_face_info)  # Continue tracking the last known face
                 else:
-                    self.logger.info("No face detected.")   
-                    self.patrol_tracking_active = False
-                    drone.send_rc_control(0, 0, 0, 0)
-            
+                    self.logger.info("No face detected.")
+                    drone.send_rc_control(0, 0, 0, 0)  # Stop rotating if no face is detected
+
         except Exception as e:
             self.logger.error(f"Error locking on to face: {e}")
-
 
     def lock_on_face(self, drone: tello.Tello, face_info):
         """Enter patrol mode, rotating and scanning for faces."""
@@ -316,23 +317,32 @@ class DroneController:
             # Process movement controls
             for direction, keys in self.controls.movement_controls.items():
                 if self.get_key(keys['pos']):
-                    self.speeds[direction] = min(
-                        self.speeds[direction] + self.config.speed_increase, 
-                        self.get_target_speed()
-                    )
+                    # Increase speed gradually
+                    if self.current_speeds[direction] < self.config.max_speed:
+                        self.current_speeds[direction] += self.config.acceleration_rate
+                        self.current_speeds[direction] = min(self.current_speeds[direction], self.config.max_speed)
+                    self.speeds[direction] = self.current_speeds[direction]
                 elif self.get_key(keys['neg']):
-                    self.speeds[direction] = max(
-                        self.speeds[direction] - self.config.speed_increase, 
-                        -self.get_target_speed()
-                    )
+                    # Decrease speed gradually
+                    if self.current_speeds[direction] > -self.config.max_speed:
+                        self.current_speeds[direction] -= self.config.acceleration_rate
+                        self.current_speeds[direction] = max(self.current_speeds[direction], -self.config.max_speed)
+                    self.speeds[direction] = self.current_speeds[direction]
                 else:
+                    # Apply countersteer if no key is pressed
                     self.speeds[direction] = self.apply_countersteer(
                         self.speeds[direction], direction
                     )
+                    # Gradually decrease speed when key is released
+                    if self.current_speeds[direction] > 0:
+                        self.current_speeds[direction] = max(0, self.current_speeds[direction] - self.config.speed_falloff)
+                    elif self.current_speeds[direction] < 0:
+                        self.current_speeds[direction] = min(0, self.current_speeds[direction] + self.config.speed_falloff)
 
             # Emergency stop
             if self.get_key("SPACE"):
                 self.speeds = dict.fromkeys(self.speeds, 0)
+                self.current_speeds = dict.fromkeys(self.current_speeds, 0)
 
             # Start tracking mode
             if self.patrol_tracking_active:
