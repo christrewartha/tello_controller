@@ -1,0 +1,31 @@
+[project]
+name = "tello-controller"
+version = "0.2.0"
+description = "Fly a DJI/Ryze Tello with keyboard or Xbox controller, with face lock-on"
+readme = "README.md"
+authors = [
+    { name = "Chris Trewartha", email = "christrewartha@hotmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "djitellopy>=2.5.0",
+    "numpy>=2.5.5",
+    "opencv-python>=5.1.0.95",
+    "pygame>=2.6.1",
+]
+
+[project.scripts]
+tello = "tello_controller.app:main"
+tello-enroll = "tello_controller.enroll:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]

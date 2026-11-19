@@ -1,4 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+.idea/
+.vscode/
 .env
-Resources/
-Snapshots/
-.idea
+
+# Downloaded on first run
+models/
+
+# Personal / generated data
+data/faces/
+recordings/
+snapshots/
